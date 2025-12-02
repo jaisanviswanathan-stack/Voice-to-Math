@@ -987,7 +987,14 @@
                     console.error('Auth error:', resp);
                     throw (resp);
                 }
-                if (showDebug) console.log('Token received, calling handleSignedIn');
+                if (showDebug) console.log('Token received:', resp);
+                
+                // IMPORTANT: Set the token in gapi client
+                gapi.client.setToken({
+                    access_token: resp.access_token
+                });
+                
+                if (showDebug) console.log('Token set in gapi client, calling handleSignedIn');
                 await handleSignedIn();
             };
 
