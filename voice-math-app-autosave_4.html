@@ -810,7 +810,7 @@
         let selectedArea = null;
         let currentCell = null;
         let permissionChecked = false;
-        let showDebug = false;
+        let showDebug = true; // Turn ON by default for debugging
         let pageCount = 0;
         const ROWS = 25;
         const INITIAL_COLS_WORK = 25;
@@ -895,33 +895,45 @@
 
         // Initialize Google API
         function gapiLoaded() {
+            console.log('=== gapiLoaded called ===');
             gapi.load('client', initializeGapiClient);
         }
 
         async function initializeGapiClient() {
+            console.log('=== initializeGapiClient called ===');
             await gapi.client.init({
                 discoveryDocs: [DISCOVERY_DOC],
             });
             gapiInited = true;
+            console.log('GAPI initialized');
             maybeEnableButtons();
         }
 
         // Initialize Google Identity Services
         function gisLoaded() {
+            console.log('=== gisLoaded called ===');
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
                 callback: '', // defined later
             });
             gisInited = true;
+            console.log('GIS initialized');
             maybeEnableButtons();
         }
 
         function maybeEnableButtons() {
+            console.log('=== maybeEnableButtons called ===');
+            console.log('gapiInited:', gapiInited, 'gisInited:', gisInited);
+            
             if (gapiInited && gisInited) {
+                console.log('Both APIs ready!');
                 // Check if user was previously signed in
                 const token = gapi.client.getToken();
+                console.log('Existing token:', token !== null);
+                
                 if (token !== null) {
+                    console.log('User has token, signing in automatically');
                     // User has a valid token, sign them in
                     handleSignedIn().catch(err => {
                         console.error('Error signing in:', err);
@@ -929,6 +941,7 @@
                         showSignInPrompt();
                     });
                 } else {
+                    console.log('No token, showing sign in prompt');
                     // No token, show sign in prompt
                     showSignInPrompt();
                 }
@@ -937,10 +950,14 @@
 
         // Show content immediately, even if Google API hasn't loaded
         function initializeApp() {
+            console.log('=== initializeApp called ===');
+            
             // Check if there are local sheets
             loadSheets();
+            console.log('Local sheets loaded:', allSheets.length);
             
             if (allSheets.length > 0 || !gapiInited || !gisInited) {
+                console.log('Showing main content (has sheets or API not ready)');
                 // Show main content with local sheets, or if Google API hasn't loaded yet
                 mainContent.style.display = 'block';
                 signInPrompt.style.display = 'none';
@@ -951,9 +968,11 @@
                 
                 // If Google API hasn't loaded, show a message
                 if (!gapiInited || !gisInited) {
+                    console.log('Google API not ready yet');
                     syncStatus.textContent = 'Loading...';
                 }
             } else {
+                console.log('Showing sign in prompt (no sheets and API ready)');
                 // No local sheets and Google API is ready - show sign in
                 showSignInPrompt();
             }
