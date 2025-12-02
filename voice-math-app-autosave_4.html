@@ -922,8 +922,14 @@
                 // Check if user was previously signed in
                 const token = gapi.client.getToken();
                 if (token !== null) {
-                    handleSignedIn();
+                    // User has a valid token, sign them in
+                    handleSignedIn().catch(err => {
+                        console.error('Error signing in:', err);
+                        // If there's an error, show sign in prompt
+                        showSignInPrompt();
+                    });
                 } else {
+                    // No token, show sign in prompt
                     showSignInPrompt();
                 }
             }
@@ -955,39 +961,63 @@
 
         // Handle sign in
         function handleAuthClick() {
+            if (showDebug) console.log('handleAuthClick called');
+            
             tokenClient.callback = async (resp) => {
                 if (resp.error !== undefined) {
+                    console.error('Auth error:', resp);
                     throw (resp);
                 }
+                if (showDebug) console.log('Token received, calling handleSignedIn');
                 await handleSignedIn();
             };
 
             if (gapi.client.getToken() === null) {
+                if (showDebug) console.log('Requesting new token with consent');
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
+                if (showDebug) console.log('Requesting token refresh');
                 tokenClient.requestAccessToken({prompt: ''});
             }
         }
 
         async function handleSignedIn() {
-            isSignedIn = true;
-            
-            // Get user info
-            const response = await gapi.client.request({
-                'path': 'https://www.googleapis.com/oauth2/v2/userinfo',
-            });
-            currentUser = response.result;
-            
-            if (showDebug) console.log('User signed in:', currentUser.email);
-            
-            // Update UI
-            showSignedInUI();
-            
-            // Find or create folder
-            await findOrCreateFolder();
-            
-            // Load sheets from Drive
-            await loadSheetsFromDrive();
+            try {
+                isSignedIn = true;
+                
+                if (showDebug) console.log('handleSignedIn: Getting user info...');
+                
+                // Get user info
+                const response = await gapi.client.request({
+                    'path': 'https://www.googleapis.com/oauth2/v2/userinfo',
+                });
+                currentUser = response.result;
+                
+                if (showDebug) console.log('User signed in:', currentUser.email);
+                
+                // Update UI - this should show the main content
+                showSignedInUI();
+                
+                // Find or create folder
+                if (showDebug) console.log('Finding or creating Drive folder...');
+                await findOrCreateFolder();
+                
+                // Load sheets from Drive
+                if (showDebug) console.log('Loading sheets from Drive...');
+                await loadSheetsFromDrive();
+                
+                if (showDebug) console.log('Sign in complete!');
+            } catch (error) {
+                console.error('Error in handleSignedIn:', error);
+                // If there's an error, fall back to offline mode
+                isSignedIn = false;
+                currentUser = null;
+                updateSyncStatus('Error signing in - using offline mode', true);
+                // Still show the main content
+                mainContent.style.display = 'block';
+                signInPrompt.style.display = 'none';
+                renderHomeScreen();
+            }
         }
 
         function showSignInPrompt() {
@@ -1022,14 +1052,27 @@
         }
 
         function showSignedInUI() {
+            if (showDebug) console.log('showSignedInUI called');
+            
+            // Hide sign in prompt
             signInPrompt.style.display = 'none';
+            
+            // Show main content
             mainContent.style.display = 'block';
+            
+            // Show user info
             userInfo.style.display = 'flex';
+            
+            // Hide sign in button
             signInButton.style.display = 'none';
             
-            userName.textContent = currentUser.name;
-            userPhoto.src = currentUser.picture;
+            // Update user info
+            if (currentUser) {
+                userName.textContent = currentUser.name;
+                userPhoto.src = currentUser.picture;
+            }
             
+            // Render the home screen
             renderHomeScreen();
         }
 
