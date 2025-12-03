@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Math Test</title>
-    
+
     <!-- Google API Client Library -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
-    
+
     <style>
         * {
             margin: 0;
@@ -247,6 +247,8 @@
             font-size: 12px;
             color: #5f6368;
             margin-left: auto;
+            min-width: 120px;
+            text-align: right;
         }
 
         .auto-save-status.saving {
@@ -441,7 +443,7 @@
         .left-section {
             width: 60%;
             padding: 50px 10px 10px 10px;
-            border-right: 2px solid #000;
+            border-right: 2px dotted rgba(0, 0, 0, 0.08);
             display: flex;
             flex-direction: column;
             min-height: 400px;
@@ -484,7 +486,7 @@
 
         .grid-container {
             flex: 1;
-            border: 1px solid #000;
+            border: 1px dotted rgba(0, 0, 0, 0.08);
             position: relative;
             overflow: auto;
             cursor: pointer;
@@ -521,7 +523,7 @@
 
         .grid-cell {
             display: table-cell;
-            border: 1px solid #000;
+            border: 1px dotted rgba(0, 0, 0, 0.08);
             width: 25px;
             height: 25px;
             text-align: center;
@@ -583,7 +585,7 @@
         .fraction-display .fraction-line {
             width: 100%;
             height: 1px;
-            background-color: #000;
+            background-color: rgba(0, 0, 0, 0.8);
             margin: 1px 0;
         }
 
@@ -721,6 +723,22 @@
                 <div style="font-size: 48px; margin-bottom: 20px;">🎤</div>
                 <h2 style="color: #202124; margin-bottom: 12px;">Welcome to Voice Math Test</h2>
                 <p style="color: #5f6368; margin-bottom: 32px; font-size: 16px;">Sign in with Google to sync your test sheets across all devices</p>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+                    <div id="signInButtonContainer"></div>
+                    <button id="continueOfflineBtn" style="
+                        padding: 12px 24px;
+                        border: 1px solid #dadce0;
+                        border-radius: 4px;
+                        background: white;
+                        color: #5f6368;
+                        font-size: 14px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                    " onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'">
+                        Continue without signing in
+                    </button>
+                </div>
             </div>
             
             <div id="mainContent" style="display: none;">
@@ -810,7 +828,7 @@
         let selectedArea = null;
         let currentCell = null;
         let permissionChecked = false;
-        let showDebug = true; // Turn ON by default for debugging
+        let showDebug = false; // Debug mode OFF by default
         let pageCount = 0;
         const ROWS = 25;
         const INITIAL_COLS_WORK = 25;
@@ -842,6 +860,8 @@
 
         // Google Sign In elements
         const signInButton = document.getElementById('signInButton');
+        const signInButtonContainer = document.getElementById('signInButtonContainer');
+        const continueOfflineBtn = document.getElementById('continueOfflineBtn');
         const signInPrompt = document.getElementById('signInPrompt');
         const mainContent = document.getElementById('mainContent');
         const userInfo = document.getElementById('userInfo');
@@ -1072,9 +1092,27 @@
                 </button>
             `;
             
-            signInButton.innerHTML = buttonHTML;
+            signInButtonContainer.innerHTML = buttonHTML;
             signInButton.style.display = 'block';
-            signInButton.querySelector('button').onclick = handleAuthClick;
+            signInButtonContainer.querySelector('button').onclick = handleAuthClick;
+        }
+
+        // Continue without signing in
+        function continueOffline() {
+            if (showDebug) console.log('Continuing without Google sign in');
+            
+            signInPrompt.style.display = 'none';
+            mainContent.style.display = 'block';
+            syncStatus.textContent = 'Offline mode - data saved locally';
+            
+            loadSheets();
+            renderHomeScreen();
+            showSignInButtonInHeader();
+        }
+
+        // Add event listener for continue offline button
+        if (continueOfflineBtn) {
+            continueOfflineBtn.addEventListener('click', continueOffline);
         }
 
         function showSignedInUI() {
@@ -1951,6 +1989,83 @@
             }
         }
 
+        // Delete last cell (backspace)
+        function deleteLastCell() {
+            if (!currentCell || !selectedArea) return;
+            
+            const area = currentCell.dataset.area;
+            const page = parseInt(currentCell.dataset.page);
+            const maxCols = getColCount(page, area);
+            
+            // Move back one cell
+            currentCol--;
+            
+            // If at start of row, go to end of previous row
+            if (currentCol < 0) {
+                currentRow--;
+                if (currentRow < 0) {
+                    currentRow = 0;
+                    currentCol = 0;
+                    return;
+                }
+                currentCol = maxCols - 1;
+            }
+            
+            // Find the cell to move to
+            const cells = selectedArea.querySelectorAll('.grid-cell');
+            for (let cell of cells) {
+                if (parseInt(cell.dataset.row) === currentRow && parseInt(cell.dataset.col) === currentCol) {
+                    // Clear this cell
+                    cell.textContent = '';
+                    cell.innerHTML = '';
+                    
+                    // Move to it
+                    if (currentCell) {
+                        currentCell.classList.remove('current');
+                    }
+                    cell.classList.add('current');
+                    currentCell = cell;
+                    break;
+                }
+            }
+        }
+
+        // Clear entire current area
+        function clearCurrentArea() {
+            if (!selectedArea) return;
+            
+            if (showDebug) console.log('Clearing current area');
+            
+            // Clear all cells in the selected area
+            const cells = selectedArea.querySelectorAll('.grid-cell');
+            cells.forEach(cell => {
+                cell.textContent = '';
+                cell.innerHTML = '';
+            });
+            
+            // Remove fraction row classes
+            const rows = selectedArea.querySelectorAll('.grid-row');
+            rows.forEach(row => {
+                row.classList.remove('has-fraction');
+            });
+            
+            // Reset to start
+            currentRow = 0;
+            currentCol = 0;
+            
+            // Find and highlight the first cell
+            for (let cell of cells) {
+                if (parseInt(cell.dataset.row) === 0 && parseInt(cell.dataset.col) === 0) {
+                    if (currentCell) {
+                        currentCell.classList.remove('current');
+                    }
+                    cell.classList.add('current');
+                    currentCell = cell;
+                    break;
+                }
+            }
+        }
+
         // Move to next cell
         function moveToNextCell() {
             if (!currentCell || !selectedArea) return;
@@ -2021,33 +2136,51 @@
                 }
                 if (selectedArea) {
                     const areaType = selectedArea.dataset.area === 'rough' ? 'Rough Work' : 'Work Area';
-                    status.textContent = `Listening for ${areaType}... Say "next line" to move down`;
+                    status.textContent = `Listening for ${areaType}... Say "next line", "delete", or "clear all"`;
                 } else {
                     status.textContent = 'Listening... Click work area or rough work to start';
                 }
             };
 
             recognition.onresult = function(event) {
+                let interimTranscript = '';
                 let finalTranscript = '';
                 
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcriptPiece = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
                         finalTranscript += transcriptPiece + ' ';
+                    } else {
+                        interimTranscript += transcriptPiece;
                     }
                 }
                 
-                const heard = finalTranscript.trim();
-                if (heard) {
-                    debugText.textContent = heard;
+                // Show what we're hearing in debug mode only
+                const heard = finalTranscript || interimTranscript;
+                if (heard && showDebug) {
+                    debugText.textContent = heard.trim();
                 }
                 
                 if (!currentCell) return;
                 if (!finalTranscript) return;
 
                 const lowerTranscript = finalTranscript.toLowerCase().trim();
+                
+                // Check for "next line" command
                 if (lowerTranscript.includes('next line') || lowerTranscript.includes('new line')) {
                     moveToNextLine();
+                    return;
+                }
+                
+                // Check for "delete all" or "clear" command (must check before "delete")
+                if (lowerTranscript.includes('delete all') || lowerTranscript.includes('clear all') || lowerTranscript === 'clear') {
+                    clearCurrentArea();
+                    return;
+                }
+                
+                // Check for "delete" or "backspace" command
+                if (lowerTranscript === 'delete' || lowerTranscript === 'backspace') {
+                    deleteLastCell();
                     return;
                 }
 
@@ -2135,7 +2268,7 @@
                     try {
                         recognition.start();
                     } catch (err) {
-                        console.log('Recognition restart failed:', err);
+                        if (showDebug) console.log('Recognition restart failed:', err);
                         isListening = false;
                         micButton.classList.remove('listening');
                         status.classList.remove('listening');
