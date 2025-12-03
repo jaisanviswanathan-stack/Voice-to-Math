@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Math Test</title>
 
-    <!-- Google API Client Library -->
+    <!-- Google Identity Services (New) -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Google API Client for Drive API calls -->
     <script src="https://apis.google.com/js/api.js"></script>
 
     <style>
@@ -910,36 +911,50 @@
         });
 
         // ========================================
-        // GOOGLE DRIVE API FUNCTIONS
+        // GOOGLE DRIVE API FUNCTIONS (MODERN GIS)
         // ========================================
 
-        // Initialize Google API
-        function gapiLoaded() {
-            console.log('=== gapiLoaded called ===');
-            gapi.load('client', initializeGapiClient);
-        }
+        let accessToken = null;
 
-        async function initializeGapiClient() {
-            console.log('=== initializeGapiClient called ===');
-            await gapi.client.init({
-                discoveryDocs: [DISCOVERY_DOC],
-            });
-            gapiInited = true;
-            console.log('GAPI initialized');
-            maybeEnableButtons();
-        }
-
-        // Initialize Google Identity Services
+        // Initialize Google Identity Services with modern approach
         function gisLoaded() {
             console.log('=== gisLoaded called ===');
+            
+            // Use token client with proper configuration
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
-                callback: '', // defined later
+                callback: async (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        accessToken = tokenResponse.access_token;
+                        console.log('Access token received');
+                        
+                        // Set token for gapi
+                        gapi.client.setToken({
+                            access_token: accessToken
+                        });
+                        
+                        await handleSignedIn();
+                    }
+                },
             });
+            
             gisInited = true;
-            console.log('GIS initialized');
+            console.log('GIS initialized (modern)');
             maybeEnableButtons();
+        }
+
+        // Initialize GAPI for Drive API
+        function gapiLoaded() {
+            console.log('=== gapiLoaded called ===');
+            gapi.load('client', async () => {
+                await gapi.client.init({
+                    discoveryDocs: [DISCOVERY_DOC],
+                });
+                gapiInited = true;
+                console.log('GAPI initialized');
+                maybeEnableButtons();
+            });
         }
 
         function maybeEnableButtons() {
@@ -948,21 +963,17 @@
             
             if (gapiInited && gisInited) {
                 console.log('Both APIs ready!');
-                // Check if user was previously signed in
-                const token = gapi.client.getToken();
-                console.log('Existing token:', token !== null);
                 
-                if (token !== null) {
-                    console.log('User has token, signing in automatically');
-                    // User has a valid token, sign them in
+                // Check if we have a stored token
+                if (accessToken) {
+                    console.log('Have access token, signing in automatically');
+                    gapi.client.setToken({ access_token: accessToken });
                     handleSignedIn().catch(err => {
                         console.error('Error signing in:', err);
-                        // If there's an error, show sign in prompt
                         showSignInPrompt();
                     });
                 } else {
                     console.log('No token, showing sign in prompt');
-                    // No token, show sign in prompt
                     showSignInPrompt();
                 }
             }
@@ -998,33 +1009,13 @@
             }
         }
 
-        // Handle sign in
+        // Handle sign in with modern GIS
         function handleAuthClick() {
-            if (showDebug) console.log('handleAuthClick called');
+            console.log('handleAuthClick called');
             
-            tokenClient.callback = async (resp) => {
-                if (resp.error !== undefined) {
-                    console.error('Auth error:', resp);
-                    throw (resp);
-                }
-                if (showDebug) console.log('Token received:', resp);
-                
-                // IMPORTANT: Set the token in gapi client
-                gapi.client.setToken({
-                    access_token: resp.access_token
-                });
-                
-                if (showDebug) console.log('Token set in gapi client, calling handleSignedIn');
-                await handleSignedIn();
-            };
-
-            if (gapi.client.getToken() === null) {
-                if (showDebug) console.log('Requesting new token with consent');
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            } else {
-                if (showDebug) console.log('Requesting token refresh');
-                tokenClient.requestAccessToken({prompt: ''});
-            }
+            // Request access token - this opens Google's consent screen
+            // Modern GIS handles this without window.opener
+            tokenClient.requestAccessToken({prompt: 'consent'});
         }
 
         async function handleSignedIn() {
