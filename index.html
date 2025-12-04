@@ -276,19 +276,32 @@
         }
         
         .share-button {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #34a853;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: #e3f2fd;
             border: none;
-            color: white;
-            font-size: 20px;
+            color: #1a73e8;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
+            margin-left: auto;
+            margin-right: 8px;
         }
 
         .share-button:hover {
-            background: #2d8e47;
+            background: #bbdefb;
+        }
+        
+        .share-icon {
+            font-size: 18px;
+        }
+        
+        .share-text {
+            font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
         }
 
         @keyframes pulse {
@@ -315,7 +328,7 @@
         .status {
             font-size: 14px;
             color: #5f6368;
-            flex: 1;
+            margin-right: auto;
         }
 
         .status.listening {
@@ -817,8 +830,11 @@
             <div class="document-title" id="documentTitle" contenteditable="true">Untitled Test Sheet</div>
             <div class="auto-save-status" id="autoSaveStatus">All changes saved</div>
             <button class="mic-button" id="micButton">🎤</button>
-            <button class="share-button" id="shareButton" title="Share this test">📤</button>
             <div class="status" id="status">Click work area or rough work, then press space or click microphone to speak</div>
+            <button class="share-button" id="shareButton" title="Share this test">
+                <span class="share-icon">🌐</span>
+                <span class="share-text">Share</span>
+            </button>
             <button class="settings-button" id="settingsButton">⚙️</button>
             <div class="debug-box" id="debugBox">
                 <strong>What I'm hearing:</strong>
