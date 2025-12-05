@@ -589,43 +589,31 @@
 
         .grid-cell.current {
             background-color: #fff3cd;
-            position: relative;
         }
         
         .live-preview {
-            position: absolute;
-            top: -40px;
-            left: 50%;
-            transform: translateX(-50%);
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
             background: white;
             border: 2px solid #1a73e8;
-            border-radius: 4px;
-            padding: 8px 12px;
-            font-size: 16px;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 20px;
             font-weight: 500;
             color: #1a73e8;
             white-space: nowrap;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            animation: fadeIn 0.2s ease;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideIn 0.2s ease;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(-5px); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-        
-        .live-preview::after {
-            content: '';
-            position: absolute;
-            bottom: -6px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-top: 6px solid #1a73e8;
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .fraction-display {
@@ -1197,11 +1185,16 @@
                 // Update UI
                 showSignedInUI();
                 
+                // IMPORTANT: Clear localStorage to force fresh sync from Drive
+                localStorage.removeItem(STORAGE_KEY);
+                allSheets = [];
+                if (showDebug) console.log('Cleared localStorage for fresh sync');
+                
                 // Find or create folder
                 if (showDebug) console.log('Finding or creating Drive folder...');
                 await findOrCreateFolder();
                 
-                // Load sheets from Drive
+                // Load sheets from Drive (this is now the ONLY source)
                 if (showDebug) console.log('Loading sheets from Drive...');
                 await loadSheetsFromDrive();
                 
@@ -1419,6 +1412,9 @@
             try {
                 updateSyncStatus('Syncing...', false);
                 
+                // Clear allSheets array - we'll load fresh from Drive
+                allSheets = [];
+                
                 // Load from JSON subfolder
                 const listUrl = `https://www.googleapis.com/drive/v3/files?q='${jsonSubfolderId}' in parents and trashed=false&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`;
                 const response = await fetch(listUrl, {
@@ -1430,8 +1426,10 @@
 
                 if (showDebug) console.log('JSON files from Drive:', data.files ? data.files.length : 0);
 
+                // Track which HTML files should exist
+                const validHtmlFiles = new Set();
+                
                 // Load each file's content
-                allSheets = [];
                 if (data.files) {
                     for (const file of data.files) {
                         try {
@@ -1444,12 +1442,19 @@
                             const sheet = await contentResponse.json();
                             sheet.driveFileId = file.id;
                             allSheets.push(sheet);
+                            
+                            // Track expected HTML file
+                            validHtmlFiles.add(`${sheet.name}.html`);
                         } catch (error) {
                             console.error('Error loading file:', file.name, error);
                         }
                     }
                 }
+                
+                // Clean up orphaned HTML files
+                await cleanupOrphanedHtmlFiles(validHtmlFiles);
 
+                // Save to localStorage (overwrites old data)
                 saveSheets();
                 renderHomeScreen();
                 updateSyncStatus('Synced', false);
@@ -1458,6 +1463,30 @@
                 console.error('Error loading from Drive:', error);
                 updateSyncStatus('Sync failed - using offline mode', true);
                 loadSheets();
+            }
+        }
+        
+        // Clean up HTML files that don't have corresponding JSON files
+        async function cleanupOrphanedHtmlFiles(validHtmlFiles) {
+            try {
+                // Get all HTML files in main folder
+                const htmlListUrl = `https://www.googleapis.com/drive/v3/files?q='${voiceMathFolderId}' in parents and mimeType='text/html' and trashed=false&fields=files(id,name)`;
+                const response = await fetch(htmlListUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                const data = await response.json();
+                
+                if (data.files) {
+                    for (const file of data.files) {
+                        // If this HTML file doesn't have a corresponding JSON, delete it
+                        if (!validHtmlFiles.has(file.name)) {
+                            if (showDebug) console.log('Deleting orphaned HTML file:', file.name);
+                            await deleteSheetFromDrive(file.id);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error cleaning up HTML files:', error);
             }
         }
 
@@ -2022,7 +2051,7 @@
         }
 
         // Delete sheet
-        function deleteSheet(sheetId) {
+        async function deleteSheet(sheetId) {
             if (showDebug) {
                 console.log('deleteSheet called with:', sheetId);
                 console.log('All sheets before:', allSheets.length);
@@ -2030,15 +2059,40 @@
             
             const sheet = allSheets.find(s => s.id === sheetId);
             const driveFileId = sheet ? sheet.driveFileId : null;
+            const sheetName = sheet ? sheet.name : null;
             
+            // Remove from array
             allSheets = allSheets.filter(s => s.id !== sheetId);
             if (showDebug) console.log('All sheets after:', allSheets.length);
             
             saveSheets();
             
             // Delete from Drive if signed in
-            if (driveFileId) {
-                deleteSheetFromDrive(driveFileId);
+            if (isSignedIn && !offlineMode) {
+                // Delete JSON file
+                if (driveFileId) {
+                    await deleteSheetFromDrive(driveFileId);
+                }
+                
+                // Delete HTML file
+                if (sheetName) {
+                    try {
+                        const htmlFileName = `${sheetName}.html`;
+                        const searchHtmlUrl = `https://www.googleapis.com/drive/v3/files?q=name='${htmlFileName}' and '${voiceMathFolderId}' in parents and trashed=false&fields=files(id)`;
+                        const searchResponse = await fetch(searchHtmlUrl, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                        });
+                        const searchData = await searchResponse.json();
+                        
+                        if (searchData.files && searchData.files.length > 0) {
+                            const htmlFileId = searchData.files[0].id;
+                            await deleteSheetFromDrive(htmlFileId);
+                            if (showDebug) console.log('Deleted HTML file:', htmlFileName);
+                        }
+                    } catch (error) {
+                        console.error('Error deleting HTML file:', error);
+                    }
+                }
             }
             
             renderHomeScreen();
@@ -2581,21 +2635,21 @@
                     debugText.textContent = heard.trim();
                 }
                 
-                // Show live preview above current cell
+                // Show live preview in bottom-left corner
                 if (currentCell && (interimTranscript || finalTranscript)) {
-                    let previewBox = currentCell.querySelector('.live-preview');
+                    let previewBox = document.querySelector('.live-preview');
                     
                     if (interimTranscript) {
                         // Still speaking - show interim results
                         if (!previewBox) {
                             previewBox = document.createElement('div');
                             previewBox.className = 'live-preview';
-                            currentCell.appendChild(previewBox);
+                            document.body.appendChild(previewBox);
                         }
                         const mathExpression = convertToMathExpression(interimTranscript.trim());
                         previewBox.textContent = mathExpression || interimTranscript.trim();
                     } else if (finalTranscript) {
-                        // Finished speaking - remove preview and commit to cell
+                        // Finished speaking - remove preview
                         if (previewBox) {
                             previewBox.remove();
                         }
